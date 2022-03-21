@@ -1,0 +1,128 @@
+// Student name: RUIFENG LUO
+// Student number:686141
+
+//constant values for tugs
+const TUG_COUNT= 10
+range TUG_RANGE=0..TUG_COUNT
+const DOCKING_TUGS= 3
+const UNDOCKING_TUGS = 2
+
+//constant values for waitzone
+const MAX_NUM_SHIPS_ARRIVAL = 2
+const MAX_NUM_SHIPS_DEPART = 2
+
+//const values for berth
+const MAX_NUM_SHIPS_BERTH = 2
+range RANGE_SHIPS_BERTH = 0..MAX_NUM_SHIPS_BERTH
+
+//constant values for PILOT
+const NUM_PILOTS = 5
+range RANGE_PILOTS = 1..NUM_PILOTS
+
+//constant values for others
+const INIT = 0
+const EMPTY = 0
+const TRUE = 1 
+const FALSE = 0 
+range SHIELD = FALSE..TRUE
+const USED = 1
+
+// CONSUMER are used for depart ships from departure waitzone
+CONSUMER
+	= (depart_ship->CONSUMER).
+
+// OPERATOR are used for control activate/deactivate shield
+OPERATOR
+	=(activateShield->deactivateShield->OPERATOR).
+// PILOT are used for the process of the pilots from taking ships to releasing ships
+PILOT 
+	= (acquireShip->acquireTugs[DOCKING_TUGS]->dock->releaseTugs[DOCKING_TUGS]
+		->unload->acquireTugs[UNDOCKING_TUGS]->undock->releaseShip 
+		->releaseTugs[UNDOCKING_TUGS]->PILOT).
+
+// BERTH_TUGS is used as BERTH and TUGS which controls tugs and ships docking, unloading and undocking
+// The first index indicates number of ships in berth,
+// The second index is 0 or 1 for activating/deactivating shield
+// The third is for number of tugs
+// The fourth indicates number of ships that have acquired undocking tugs
+BERTH_TUGS=BERTH_TUGS[INIT][INIT][TUG_COUNT][INIT],
+BERTH_TUGS[ships:RANGE_SHIPS_BERTH][shield:SHIELD][tugs:TUG_RANGE][acqtugs_ships:RANGE_SHIPS_BERTH] 
+	= (when(ships<MAX_NUM_SHIPS_BERTH && !shield && acqtugs_ships<MAX_NUM_SHIPS_BERTH) 
+		// dock when berth is available and no shield
+		pilot[RANGE_PILOTS].dock->BERTH_TUGS[ships+1][shield][tugs][acqtugs_ships+1]
+	  |when(ships>EMPTY) // unload ships when ships in berth
+		pilot[RANGE_PILOTS].unload->BERTH_TUGS[ships][shield][tugs][acqtugs_ships]
+	  |when(ships>EMPTY && !shield) //undock when ships are ready in berth and no shield
+		pilot[RANGE_PILOTS].undock->BERTH_TUGS[ships-1][shield][tugs][acqtugs_ships]
+
+	  |activateShield->BERTH_TUGS[ships][TRUE][tugs][acqtugs_ships]  // control activate/deactivate shield
+	  |deactivateShield->BERTH_TUGS[ships][FALSE][tugs][acqtugs_ships]
+
+	  |when (tugs>=DOCKING_TUGS && acqtugs_ships<USED) // any pilots are able to acquire tugs when tugs 
+												      // are available and no ships in berth
+		pilot[RANGE_PILOTS].acquireTugs[DOCKING_TUGS] -> BERTH_TUGS[ships][shield][tugs-DOCKING_TUGS][acqtugs_ships]
+	  |when (tugs>=DOCKING_TUGS && acqtugs_ships>EMPTY && (tugs-DOCKING_TUGS)>=UNDOCKING_TUGS*acqtugs_ships) 
+		// when ships are in berth and have not yet acquire undocking tugs, it locks enough tugs 
+		// for ships in berth to undock
+		pilot[RANGE_PILOTS].acquireTugs[DOCKING_TUGS] -> BERTH_TUGS[ships][shield][tugs-DOCKING_TUGS][acqtugs_ships]
+	  
+	  |when(tugs>=UNDOCKING_TUGS && acqtugs_ships>EMPTY)// tugs available when pilot acquire undocking tugs
+		pilot[RANGE_PILOTS].acquireTugs[UNDOCKING_TUGS] -> BERTH_TUGS[ships][shield][tugs-UNDOCKING_TUGS][acqtugs_ships-1]
+	  |when(tugs<=TUG_COUNT-DOCKING_TUGS)// pilot release docking tugs
+		pilot[RANGE_PILOTS].releaseTugs[DOCKING_TUGS]->BERTH_TUGS[ships][shield][tugs+DOCKING_TUGS][acqtugs_ships]
+	  |when(tugs<=TUG_COUNT-UNDOCKING_TUGS)// pilot release undocking tugs
+		pilot[RANGE_PILOTS].releaseTugs[UNDOCKING_TUGS]->BERTH_TUGS[ships][shield][tugs+UNDOCKING_TUGS][acqtugs_ships]).
+
+// PRODUCER is used to produce new ships and arrive those ships into arrival waitzone
+PRODUCER 
+	= (get_newShip->arrive->PRODUCER).
+
+// WAITZONE is for both arrval waitzone and depart waitzone
+// It takes ships from producer or exit ships by consumer
+// By default, waitzone takes 2 ships
+WAITZONE(NUM_SHIPS=2) = WAITZONE[INIT],
+WAITZONE[ships:0..NUM_SHIPS]
+	= (when(ships<MAX_NUM_SHIPS_ARRIVAL)ship_arrive->WAITZONE[ships+1]// ship comes into waitzone
+ 	  |when(ships>0)ship_exit->WAITZONE[ships-1]).//ship leaves from waitzone
+
+//Safety properties
+
+// SAFE_SPACEPORT is used to check deadlock when many pilots acquire tugs 
+// and not enough tugs for ships undock in berth
+// The first index is number of tugs,  the second is number of ships in berth,
+// the third index is number of ships that have acquired undocking tugs
+property SAFE_SPACEPORT = SAFE_SPACEPORT[TUG_COUNT][INIT][INIT],
+SAFE_SPACEPORT[tugs:TUG_RANGE][ships:RANGE_SHIPS_BERTH][acqtugs_ships:RANGE_SHIPS_BERTH] 
+	= (when(ships<MAX_NUM_SHIPS_BERTH && acqtugs_ships<MAX_NUM_SHIPS_BERTH)// dock when berth is available
+		pilot[RANGE_PILOTS].dock->SAFE_SPACEPORT[tugs][ships+1][acqtugs_ships+1]
+	  |when(ships>EMPTY) //undock when ships have unloaded in berth
+		pilot[RANGE_PILOTS].undock->SAFE_SPACEPORT[tugs][ships-1][acqtugs_ships]
+	  |when(tugs>=DOCKING_TUGS && acqtugs_ships<USED) // any pilots are able to acquire tugs when tugs 
+												  // are available and no ships in berth
+		pilot[RANGE_PILOTS].acquireTugs[DOCKING_TUGS]-> SAFE_SPACEPORT[tugs-DOCKING_TUGS][ships][acqtugs_ships]
+	  |when (tugs>=DOCKING_TUGS && acqtugs_ships>EMPTY && (tugs-DOCKING_TUGS)>=UNDOCKING_TUGS*acqtugs_ships) 
+			// when ships are in berth and have not yet acquire undocking tugs, it locks enough tugs 
+		   // for ships in berth to undock
+		pilot[RANGE_PILOTS].acquireTugs[DOCKING_TUGS]-> SAFE_SPACEPORT[tugs-DOCKING_TUGS][ships][acqtugs_ships]
+	  |when(tugs>=UNDOCKING_TUGS && acqtugs_ships>EMPTY) // tugs available when pilot acquire undocking tugs
+		pilot[RANGE_PILOTS].acquireTugs[UNDOCKING_TUGS] -> SAFE_SPACEPORT[tugs-UNDOCKING_TUGS][ships][acqtugs_ships-1]
+	  |when(tugs<=TUG_COUNT-DOCKING_TUGS) // pilot release docking tugs
+		pilot[RANGE_PILOTS].releaseTugs[DOCKING_TUGS]->SAFE_SPACEPORT[tugs+DOCKING_TUGS][ships][acqtugs_ships]
+	  |when(tugs<=TUG_COUNT-UNDOCKING_TUGS) // pilot release undocking tugs
+		pilot[RANGE_PILOTS].releaseTugs[UNDOCKING_TUGS]->SAFE_SPACEPORT[tugs+UNDOCKING_TUGS][ships][acqtugs_ships]).
+
+
+//liveness properties
+
+// Check the progress of actions, depart_ship and releaseShip
+progress DEPARTURE = {depart_ship}
+progress RELEASESHIP = {pilot[RANGE_PILOTS].releaseShip}
+
+// ||SYSTEM is the composite of the components except safety property
+||SYSTEM = (PRODUCER/{arrive.ship_arrive/arrive}
+			||pilot[RANGE_PILOTS]:PILOT||BERTH_TUGS||CONSUMER||OPERATOR
+			||arrive:WAITZONE(MAX_NUM_SHIPS_ARRIVAL)/{pilot[RANGE_PILOTS].acquireShip/arrive.ship_exit}
+			||depart:WAITZONE(MAX_NUM_SHIPS_DEPART)/{pilot[RANGE_PILOTS].releaseShip/depart.ship_arrive,depart_ship/depart.ship_exit}).
+
+// ||SYSTEM_SPACEPORT is the composite to check the safety of spaceport, which is deadlock
+||SYSTEM_SPACEPORT = (SYSTEM||SAFE_SPACEPORT).

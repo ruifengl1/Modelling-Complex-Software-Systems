@@ -1,0 +1,39 @@
+// Student name: RUIFENG LUO
+// Student number:686141
+
+In the original model in assignment 1a, I have found several problems below:
+-    Deadlock. 
+     As a number of pilots acquired tugs are ready for docking, there may not have 
+     enough tugs for ships in berth to undocking. In this case, pilots holding docking 
+     tugs are waiting for the berth. However, those ships in the berth are waiting for 
+     the undocking tugs since not enough tugs can be used for undocking and pilots 
+     holding most of the tugs. This caused deadlock.
+-    Non-deterministic process.
+     In the process of releasing ship to depart wait zone and consumer depart those 
+     ships in the depart wait zone, there are non-deterministic processes. Sometimes 
+     consumer departs ships in depart wait zone before pilots release ships to the 
+     depart wait zone. This problem is totally depending on the timing in java.
+
+As I implement the model from Assignment 1a in FSP, non-deterministic process is simply 
+fixed by converting to FSP. The reason I believe is that the FSP model only consider 
+the legal actions of the system, regardless of timing in the system. Furthermore, FSP 
+allows both non-deterministic choice and deterministic choice to implement those 
+processes. In this case, I implemented those actions in the pilot component, in which 
+actions are executed in sequence and also in order. This prevented those actions from
+non-deterministic.
+However, converting to the FSP model won’t fix the problem of deadlock. And also, LTSA 
+won’t consider this as deadlock since other actions are operating normally.The solution I 
+made in the modified model is to preserve enough tugs for ships in berth undocking. If 
+there are no ships in the berth, there is no need to preserve tugs. Moreover, once ships 
+dock in the berth and release docking tugs, I made guards to ensure pilot outside of 
+berth will not acquire those tugs for ships undocking. By doing so, those undocking tugs
+for the ships in berth are locked and will be unlocked once ships in berth release to 
+depart wait zone.
+A trade-off in the modified model compared to the original model is that the performance 
+of the spaceport operating system decreased. This is because some tugs are locked, and 
+pilots cannot acquire those tugs until tugs are unlocked. The trade-off only affects 
+the process as a number of ships are docked in the berth. Before ships in berth release 
+docking tugs, pilots cannot acquire tugs to dock in the berth. Comparing to the original 
+model, pilots can acquire tugs to dock in the berth, and those ships undocking in berth 
+could rely on tugs release by other ships in the berth. The solution I made slow down 
+the process of the system a little bit.

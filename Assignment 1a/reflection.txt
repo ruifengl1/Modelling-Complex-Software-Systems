@@ -1,0 +1,11 @@
+RUIFENG LUO
+686141
+
+Using different values of parameters, there are two problems found in the simulation below:
+First of all, different values of NUM_TUGS and NUM_PILOTS may cause Deadlock, such as NUM_TUGS = 10 and NUM_PILOTS = 5. At the start, all pilots require 3 tugs and 2 tugs for docking and undocking at berth respectively. Whenever ship and pilot are available at arrival wait zone, ship is allocated to pilot. Once pilot acquires a ship, the pilot would require tugs at arrival wait zone. In this example, only 3 pilots are allocated with tugs (3 tugs for 3 pilots). However, there are 2 pilots change state to WAIT since there are not enough tugs available for docking. When the first ship come to berth for unloading, the ship releases 3 tugs (4 tugs available after acquired). One of the pilots has been notified with tugs available, it changes state to RUNNING and acquires 3 tugs (1 tug available after acquired). After an amount of time, the ship at berth is ready for undocking. But it changes state to WAIT at berth since the number of tugs are not available. In this case, multiple ships holding tugs are waiting for docking at berth, while the ship at berth is waiting for tugs released from pilots. It causes deadlock. 
+According to liveness property, the program cannot make progress since threads are waiting for other to release a lock. And also, threads in the program are blocked from gaining access to a resource, it causes starvation as well.
+Secondly, it is expected pilot returns ship to departure wait zone and release ship before the ship departs from departure wait zone. When I model the simulation, pilot release ship after the ship departs from departure wait zone sometimes. Inside the code, class consumer and class pilot are independent of each other. Sometimes, the thread of consumer may run ahead of the pilot. Hence, these processes are non-deterministic. In this case, the pilot may need to send a flag to the consumer to indicate whether consumer is allowed to execute.
+According to safety property, the problem violates the property since it defines deterministic process.
+For a successful concurrent program, program would not violate safety and liveness properties.
+
+
